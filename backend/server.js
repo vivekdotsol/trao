@@ -172,11 +172,14 @@ app.post("/api/trips/generate", auth, async (req, res) => {
   try {
     const { destination, days, budgetType, interests } = req.body;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-    });
+    let aiData;
 
-    const prompt = `
+    try {
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+      });
+
+      const prompt = `
 Generate a JSON response only.
 
 Destination: ${destination}
@@ -185,35 +188,75 @@ Budget: ${budgetType}
 Interests: ${interests.join(", ")}
 
 Return JSON:
-
 {
-  "itinerary": [
-    {
-      "day": 1,
-      "activities": []
-    }
-  ],
-  "budgetEstimate": {
-    "flights": "",
-    "accommodation": "",
-    "food": "",
-    "activities": "",
-    "total": ""
-  },
+  "itinerary": [],
+  "budgetEstimate": {},
   "hotels": []
 }
 `;
 
-    const result = await model.generateContent(prompt);
+      const result = await model.generateContent(prompt);
 
-    const text = result.response.text();
+      const text = result.response.text();
 
-    const cleaned = text
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+      const cleaned = text
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
 
-    const aiData = JSON.parse(cleaned);
+      aiData = JSON.parse(cleaned);
+    } catch (error) {
+      console.log("Gemini unavailable, using fallback");
+
+      aiData = {
+        itinerary: Array.from({ length: Number(days) }, (_, index) => ({
+          day: index + 1,
+          activities: [
+            `Explore ${destination}`,
+            "Local sightseeing",
+            "Food experience",
+            "Popular attractions",
+          ],
+        })),
+        budgetEstimate: {
+          flights:
+            budgetType === "Low"
+              ? "$300"
+              : budgetType === "Medium"
+                ? "$600"
+                : "$1200",
+          accommodation:
+            budgetType === "Low"
+              ? "$200"
+              : budgetType === "Medium"
+                ? "$500"
+                : "$1200",
+          food:
+            budgetType === "Low"
+              ? "$100"
+              : budgetType === "Medium"
+                ? "$250"
+                : "$500",
+          activities:
+            budgetType === "Low"
+              ? "$100"
+              : budgetType === "Medium"
+                ? "$300"
+                : "$700",
+          total:
+            budgetType === "Low"
+              ? "$700"
+              : budgetType === "Medium"
+                ? "$1650"
+                : "$3600",
+        },
+        hotels: [
+          `${destination} Budget Inn`,
+          `${destination} City Hotel`,
+          `${destination} Grand Resort`,
+        ],
+      };
+    }
 
     const trip = await Trip.create({
       userId: req.user.id,
